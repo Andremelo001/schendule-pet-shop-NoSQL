@@ -1,0 +1,11 @@
+[project]
+name = "schendule-pet-shop-mongodb"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.8",
+    "motor[srv]>=3.7.0",
+    "odmantic>=1.0.2",
+]
