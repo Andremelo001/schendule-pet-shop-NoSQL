@@ -2,13 +2,7 @@ from enum import Enum
 from fastapi import APIRouter, HTTPException, Depends, Query
 from odmantic import ObjectId
 from app.database import engine
-from app.models.Services import Services
-from pydantic import BaseModel
-
-class ServiceUpdate(BaseModel):
-    duration_in_minutes: int | None = None
-    type_service: str | None = None
-    price: float | None = None
+from app.models.Services import Services, ServiceUpdate
 
 
 class CategoryPrice(str, Enum):
