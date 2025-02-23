@@ -1,7 +1,8 @@
 from fastapi import FastAPI
-from routes import ClientRoutes
+from app.routes import ServicesRoutes, PetRoutes
 
 app = FastAPI()
 
 # Rotas para Endpoints
-app.include_router(ClientRoutes.router)
+app.include_router(ServicesRoutes.router)
+app.include_router(PetRoutes.router)

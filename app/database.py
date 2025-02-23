@@ -5,6 +5,7 @@ import os
 
 # Carregar variáveis do arquivo .env
 load_dotenv()
+print(os.getenv("MONGO_URI")) 
 
 # MongoDB connection
 DATABASE_URL = os.getenv("url")
