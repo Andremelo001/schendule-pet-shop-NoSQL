@@ -3,9 +3,10 @@ from odmantic import ObjectId
 from typing import Optional, List
 
 from app.database import get_engine
-from app.models.Pet import Pet
+from app.models.Pet import Pet, PetUpdate
 from app.models.Client import Client
 from app.models.Schedule import Schedule
+
 
 router = APIRouter(
     prefix="/pets",
@@ -51,50 +52,57 @@ async def read_pet_for_client(client_id: str) -> List[Pet]:
     """Retorna todos os pets associados a um `client_id`."""
     engine = get_engine()
 
-    client = await engine.find(Client, Client.id == ObjectId(client_id))
-    if not client:
-        raise HTTPException(status_code=404, detail=f"Cliente {client_id} não encontrado")
+    if not ObjectId.is_valid(client_id):
+        raise HTTPException(status_code=400, detail="ID de cliente inválido")
 
-    pets = await engine.find(Pet, Pet.client == client)
+    pets = await engine.find(Pet, Pet.client == ObjectId(client_id))
+    if not pets:
+        raise HTTPException(status_code=404, detail=f"Nenhum pet encontrado para o cliente {client_id}")
+
     return pets
 
 
-@router.delete("/{client_id}/pets/{pet_id}")
-async def delete_pet_for_client(client_id: str, pet_id: str):
-    """Deleta um pet pelo `client_id` e `pet_id`."""
+@router.delete("/pets/{pet_id}")
+async def delete_pet(pet_id: str):
     engine = get_engine()
 
-    pet = await engine.find_one(Pet, Pet.id == ObjectId(pet_id), Pet.client.id == ObjectId(client_id))
+    if not ObjectId.is_valid(pet_id):
+        raise HTTPException(status_code=400, detail="ID do pet inválido")
+
+    pet = await engine.find_one(Pet, Pet.id == ObjectId(pet_id))
     if not pet:
         raise HTTPException(status_code=404, detail="Pet não encontrado")
 
-    schedules = await engine.find(Schedule, Schedule.pet.id == pet.id)
+    # Remover agendamentos associados ao pet
+    schedules = await engine.find(Schedule, Schedule.pet == pet.id)
     for schedule in schedules:
-        schedule_services = await engine.find(Schedule, Schedule.id == schedule.id)
-        for service in schedule_services:
-            await engine.delete(service)
-
         await engine.delete(schedule)
 
+    # Remover o pet
     await engine.delete(pet)
+    
     return {"ok": True}
 
 
-@router.put("/{client_id}/pets/{pet_id}")
-async def update_pet_for_client(client_id: str, pet_id: str, pet_update: dict):
-    """Atualiza os dados de um pet pelo `client_id` e `pet_id`."""
+@router.put("/{pet_id}")
+async def update_pet(pet_id: str, update_data: PetUpdate):
     engine = get_engine()
 
-    pet = await engine.find_one(Pet, Pet.id == ObjectId(pet_id), Pet.client.id == ObjectId(client_id))
+    # Validar o ID
+    if not ObjectId.is_valid(pet_id):
+        raise HTTPException(status_code=400, detail="ID inválido")
+
+    # Buscar o pet pelo ID
+    pet = await engine.find_one(Pet, Pet.id == ObjectId(pet_id))
     if not pet:
         raise HTTPException(status_code=404, detail="Pet não encontrado")
 
-    for key, value in pet_update.items():
+    # Atualizar os dados do pet
+    for key, value in update_data.dict(exclude_unset=True).items():
         setattr(pet, key, value)
 
     await engine.save(pet)
     return pet
-
 
 @router.get("/{pet_name}/pet-name", response_model=List[Pet])
 async def get_pet_by_name(
@@ -106,14 +114,20 @@ async def get_pet_by_name(
     """Busca pets por nome parcial ou completo. Se `client_id` for informado, filtra pelos pets do cliente."""
     engine = get_engine()
 
-    filters = [Pet.name.contains(pet_name)]
+    # Filtro base para buscar o nome parcialmente correspondente (case insensitive)
+    filters = {"name": {"$regex": pet_name, "$options": "i"}}
+
     if client_id:
+        if not ObjectId.is_valid(client_id):
+            raise HTTPException(status_code=400, detail="ID do cliente inválido")
+        
         client = await engine.find_one(Client, Client.id == ObjectId(client_id))
         if not client:
             raise HTTPException(status_code=404, detail="Cliente não encontrado")
-        filters.append(Pet.client == client)
+        
+        filters["client"] = client.id
 
-    pets = await engine.find(Pet, *filters, skip=offset, limit=limit)
+    pets = await engine.find(Pet, filters, skip=offset, limit=limit)
     
     if not pets:
         raise HTTPException(status_code=404, detail="Nenhum pet encontrado")
