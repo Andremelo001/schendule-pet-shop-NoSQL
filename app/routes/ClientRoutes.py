@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
-from database import get_engine
-from models.Client import Client, UpdateClient
-from models.Pet import Pet
-from models.Schedule import Schedule
-from models.Services import Services
+from app.database import get_engine
+from app.models.Client import Client, UpdateClient
+from app.models.Pet import Pet
+from app.models.Schedule import Schedule
+from app.models.Services import Services
 from odmantic import ObjectId
 
 router = APIRouter(
@@ -28,23 +28,8 @@ async def create_client(client: Client) -> Client:
 async def get_all_clients(skip: int = Query(0, ge=0), limit: int = Query(10, gt=0, le=100)):
 
     clients = await engine.find(Client, skip=skip, limit=limit)
-
-    response = []
     
-    for client in clients:
-        pets = await engine.find(Pet, Pet.client == client.id)
-        response.append({
-            "client": {
-                "id": str(client.id),
-                "name": client.name,
-                "cpf": client.cpf,
-                "age": client.age,
-                "is_admin": client.is_admin
-            },
-            "pets": [{"id": str(pet.id), "name": pet.name, "breed": pet.breed, "age": pet.age, "size_in_centimeters": pet.size_in_centimeters} for pet in pets]
-        })
-    
-    return response
+    return clients
 
 
 @router.get("/{client_id}")
@@ -55,29 +40,7 @@ async def get_client_by_id(client_id: str):
     if not client:
         raise HTTPException(status_code=404, detail=f"Cliente com o id{client_id} não encontrado")
     
-    pets = await engine.find(Pet, Pet.client == client.id)
-    
-    response = {
-        "client": {
-            "id": str(client.id),
-            "name": client.name,
-            "cpf": client.cpf,
-            "age": client.age,
-            "is_admin": client.is_admin
-        },
-            "pets": [
-                {
-                    "id": str(pet.id), 
-                    "name": pet.name, 
-                    "breed": pet.breed, 
-                    "age": pet.age, 
-                    "size_in_centimeters": pet.size_in_centimeters
-                } 
-                for pet in pets
-            ]
-    }
-    
-    return response
+    return client
 
 @router.get("/{client_id}")
 async def get_clients_schedules_by_id(client_id: str):
@@ -163,6 +126,51 @@ async def delete_client_for_id(client_id: str) -> dict:
         return {"message": "Cliente deletado com sucesso"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao deletar cliente e seus dados associados: {str(e)}")
+    
+
+@router.get("/total/schedules/by/client", response_model=list[dict])
+async def total_schedules_by_client() -> list[dict]:
+    
+    """Endpoint que retorna o total de agendamentos por cliente"""
+    collection = engine.get_collection(Schedule)
+
+    pipeline = [
+        {
+            "$lookup": {
+                "from": "client",
+                "localField": "client",
+                "foreignField": "_id",
+                "as": "client_info"
+            }
+        },
+        {
+            "$unwind": "$client_info"
+        },
+        {
+            "$group": {
+                "_id": {
+                    "client_id": {"$toString": "$client_info._id"},
+                    "client_name": "$client_info.name"
+                },
+                "total_schedules": {"$sum": 1}
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "client_id": "$_id.client_id",
+                "client_name": "$_id.client_name",
+                "total_schedules": 1
+            }
+        },
+        {
+            "$sort": {"total_schedules": -1}
+        }
+    ]
+
+    results = await collection.aggregate(pipeline).to_list(length=None)
+
+    return results
 
 
 

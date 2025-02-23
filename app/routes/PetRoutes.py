@@ -47,11 +47,11 @@ async def read_pets(offset: int = 0, limit: int = Query(default=10, le=100)):
 
 
 @router.get("/{client_id}", response_model=List[Pet])
-async def read_pet_for_client(client_id: str):
+async def read_pet_for_client(client_id: str) -> List[Pet]:
     """Retorna todos os pets associados a um `client_id`."""
     engine = get_engine()
 
-    client = await engine.find_one(Client, Client.id == ObjectId(client_id))
+    client = await engine.find(Client, Client.id == ObjectId(client_id))
     if not client:
         raise HTTPException(status_code=404, detail=f"Cliente {client_id} não encontrado")
 
@@ -70,7 +70,7 @@ async def delete_pet_for_client(client_id: str, pet_id: str):
 
     schedules = await engine.find(Schedule, Schedule.pet.id == pet.id)
     for schedule in schedules:
-        schedule_services = await engine.find(ScheduleServices, ScheduleServices.schedule.id == schedule.id)
+        schedule_services = await engine.find(Schedule, Schedule.id == schedule.id)
         for service in schedule_services:
             await engine.delete(service)
 
